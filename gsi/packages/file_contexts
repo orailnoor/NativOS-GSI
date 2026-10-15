@@ -1,0 +1,2 @@
+/data/misc/nativos/packages(/.*)? u:object_r:nativos_package_file:s0
+/system/etc/nativos/linux/usr/local/libexec/nativos-proot u:object_r:nativos_package_exec:s0

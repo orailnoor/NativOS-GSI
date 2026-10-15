@@ -1,0 +1,6 @@
+Package: nativos-package-fixture
+Version: 1.1
+Architecture: arm64
+Maintainer: NativOS development <nativos@example.invalid>
+Description: Local non-production APT lifecycle fixture upgrade
+Depends: hello

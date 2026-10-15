@@ -1,0 +1,23 @@
+cc_binary {
+    name: "nativosd",
+    srcs: ["src/nativosd.cpp"],
+    cpp_std: "c++17",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+    init_rc: ["nativosd.rc"],
+}
+
+cc_library_static {
+    name: "libnativos_session_supervisor",
+    srcs: ["src/session_supervisor.cpp"],
+    export_include_dirs: ["src"],
+    cpp_std: "c++17",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
+
+cc_binary {
+    name: "nativos-session-runner",
+    srcs: ["src/session_runner.cpp"],
+    static_libs: ["libnativos_session_supervisor"],
+    cpp_std: "c++17",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}

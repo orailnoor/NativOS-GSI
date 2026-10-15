@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=App Catalog (Web)
+Comment=Browse Flathub; not a Flatpak installer. Install supported ARM64 packages with APT.
+Icon=org.gnome.Software
+Exec=/usr/local/bin/firefox https://flathub.org
+Terminal=false
+DBusActivatable=false
+Categories=Network;

@@ -1,0 +1,183 @@
+; Development platform policy addition; never ship a vendor-combined binary.
+(type nativosd)
+(type nativos_app)
+(type nativos_session)
+(type nativos_browser)
+(type nativos_browser_exec)
+; Reusable unprivileged Linux client contract. Never put mount, capability,
+; ptrace, writable-file execution or JIT grants on this attribute.
+(typeattribute nativos_linux_client)
+(typeattributeset nativos_linux_client (nativos_session nativos_browser))
+(typeattributeset domain (nativos_browser))
+(typeattributeset coredomain (nativos_browser))
+(typeattributeset netdomain (nativos_browser))
+(typeattributeset file_type (nativos_browser_exec))
+(typeattributeset exec_type (nativos_browser_exec))
+(typeattributeset system_file_type (nativos_browser_exec))
+(roletype r nativos_browser)
+; Approved Firefox-only JIT boundary. Read-only labeled launchers select it;
+; NoNewPrivs/nosuid remain active and all kernel capabilities stay dropped.
+(allow nativos_browser self (process (execmem)))
+(typetransition nativos_session nativos_browser_exec process nativos_browser)
+(allow nativos_session nativos_browser_exec (file (read open getattr execute map)))
+(allow nativos_session nativos_browser (process (transition siginh rlimitinh signal sigkill sigstop signull)))
+(allow nativos_session nativos_browser (process2 (nnp_transition nosuid_transition)))
+(allow nativos_browser nativos_browser_exec (file (read open getattr execute map entrypoint execute_no_trans)))
+(allow nativos_browser nativos_session (process (sigchld)))
+(allow nativos_browser nativos_session (fd (use)))
+(allow nativos_session nativos_browser (fd (use)))
+(allow nativos_browser nativos_session (unix_stream_socket (connectto)))
+(allow nativos_browser self (process (fork sigchld signal sigkill sigstop signull getpgid setpgid getsession setrlimit)))
+(typetransition nativos_browser tmpfs file nativos_runtime_file)
+(type nativosd_exec)
+(type nativos_socket)
+(type nativos_log_file)
+(typeattributeset file_type (nativos_log_file))
+(typeattributeset data_file_type (nativos_log_file))
+(typeattributeset core_data_file_type (nativos_log_file))
+(typetransition nativosd nativos_runtime_file file "startup.log" nativos_log_file)
+(allow nativosd nativos_log_file (file (create open write getattr setattr)))
+(allow shell nativos_runtime_file (dir (search)))
+(allow shell nativos_log_file (file (read open getattr)))
+(allow nativos_linux_client nativosd (fifo_file (write getattr ioctl)))
+; Libraries test whether stderr is a tty. Permit TCGETS on the log pipe so
+; the kernel returns ENOTTY normally rather than generating repeated AVCs.
+(allowx nativos_linux_client nativosd (ioctl fifo_file (0x5401)))
+(allow nativosd self (fifo_file (read write getattr)))
+(allow nativos_linux_client proc_filesystems (file (read open getattr)))
+(type nativos_runtime_file)
+(type nativos_app_userfaultfd)
+(typeattributeset domain (nativosd nativos_app nativos_session))
+(typeattributeset coredomain (nativosd nativos_app nativos_session))
+(typeattributeset appdomain (nativos_app))
+(typeattributeset netdomain (nativos_app nativos_session))
+(typeattributeset file_type (nativosd_exec nativos_socket nativos_runtime_file))
+(typeattributeset exec_type (nativosd_exec))
+(typeattributeset system_file_type (nativosd_exec))
+(typeattributeset data_file_type (nativos_runtime_file))
+(typeattributeset core_data_file_type (nativos_runtime_file))
+(typeattributeset mlstrustedobject (nativos_socket nativos_runtime_file))
+; Android apps carry per-app MCS categories while this root daemon runs at s0.
+; Mark only the daemon as trusted so the connectto MLS constraint accepts clients.
+(typeattributeset mlstrustedsubject (nativosd))
+; DEVELOPMENT: the Linux session runs at s0 while the authenticated Android
+; display peer has per-app categories. The existing connectto TE allow is
+; insufficient for the MLS constraint. Exempt this dedicated domain only.
+; This also exempts its other MLS checks: retain DAC/capability/TE restrictions,
+; and replace with a category-aware session or a small display broker before
+; claiming production multi-user isolation. Do not exempt nativos_app.
+(typeattributeset mlstrustedsubject (nativos_session))
+(roletype r nativosd)
+(roletype r nativos_app)
+(roletype r nativos_session)
+(roletype object_r nativos_app_userfaultfd)
+; CIL does not expand app_domain(nativos_app). Reproduce its per-domain
+; tmpfs/JIT and userfaultfd rules so ART can specialize the app process.
+(typetransition nativos_app tmpfs file appdomain_tmpfs)
+(allow nativos_app appdomain_tmpfs (file (ioctl read write getattr relabelfrom map execute)))
+(allowx nativos_app appdomain_tmpfs (ioctl file ((range 0x7701 0x770b))))
+(typetransition nativos_app nativos_app anon_inode "[userfaultfd]" nativos_app_userfaultfd)
+(allow nativos_app nativos_app_userfaultfd (anon_inode (ioctl read create)))
+(allow init nativosd_exec (file (read open getattr execute map)))
+(allow init nativosd (process (transition siginh rlimitinh signal sigkill)))
+(allow nativosd nativosd_exec (file (read open getattr execute map entrypoint execute_no_trans)))
+(allow nativosd init (fd (use)))
+(allow nativosd init (process (sigchld)))
+(typetransition init nativosd_exec process nativosd)
+(allow nativosd self (unix_stream_socket (create bind listen accept read write getattr getopt setopt shutdown)))
+(allow nativos_app nativosd (unix_stream_socket (connectto)))
+(allow nativos_app nativos_socket (sock_file (write open getattr)))
+; A dedicated app domain does not inherit the concrete priv_app service lookup
+; rules generated by AOSP. NativOS is a privileged system app, so give it the
+; same public and system API service classes without exposing other services.
+(allow nativos_app app_api_service (service_manager (find)))
+(allow nativos_app system_api_service (service_manager (find)))
+(allow nativosd nativos_socket (sock_file (read write open getattr)))
+(allow nativosd self (capability (sys_admin sys_chroot mknod setuid setgid setpcap chown fowner dac_override dac_read_search fsetid kill)))
+(allow nativosd system_file (dir (search read open getattr mounton)))
+(allow nativosd system_file (file (read open getattr execute map mounton)))
+(allow nativosd system_file (lnk_file (read getattr)))
+(allow nativos_linux_client system_file (dir (search read open getattr)))
+(allow nativos_linux_client system_file (file (read open getattr execute map entrypoint execute_no_trans ioctl)))
+; Python probes tty status and close-on-exec on opened distribution files.
+; These two harmless descriptor operations avoid flooding audit with ENOTTY probes.
+(allowx nativos_linux_client system_file (ioctl file (0x5401 0x5451)))
+(allow nativos_linux_client system_file (lnk_file (read getattr)))
+; The init daemon and supervised runner share an executable label. Match that
+; exact label here: a transition targeting the concrete system_file type does
+; not match nativosd_exec merely because it has system_file_type.
+(typetransition nativosd nativosd_exec process nativos_session)
+(allow nativos_session nativosd_exec (file (read open getattr execute map entrypoint)))
+(allow nativosd nativos_session (process (transition siginh rlimitinh signal sigkill)))
+(allow nativosd nativos_session (process2 (nnp_transition nosuid_transition)))
+(allow nativos_session nativosd (process (sigchld)))
+(allow nativos_session nativosd (fd (use)))
+; nativosd supervises the child, but the executable transition puts all Linux
+; namespace, mount, chroot and privilege-drop operations in nativos_session.
+(allow nativos_session self (capability (sys_admin sys_chroot mknod setuid setgid setpcap chown fowner dac_override dac_read_search fsetid kill)))
+(allow nativos_session self (process2 (nnp_transition nosuid_transition)))
+(allow nativosd system_data_file (dir (search getattr)))
+(allow nativos_app system_data_file (dir (search getattr)))
+(allow nativosd nativos_runtime_file (dir (create search read write open getattr setattr add_name remove_name mounton)))
+(allow nativosd nativos_runtime_file (file (create read write open getattr setattr mounton unlink)))
+(allow nativosd nativos_runtime_file (lnk_file (create read getattr)))
+(allow nativosd nativos_runtime_file (chr_file (create read write open getattr setattr ioctl)))
+(allow nativos_app nativos_runtime_file (dir (search read write open getattr setattr add_name remove_name create)))
+(allow nativos_app nativos_runtime_file (file (create read write open getattr setattr unlink rename map)))
+(allow nativos_app nativos_runtime_file (sock_file (create read write open getattr setattr unlink)))
+; The Android-to-Linux app launcher is a FIFO inside this privileged app's own
+; credential-encrypted data directory.
+(allow nativos_app privapp_data_file (fifo_file (create read write open getattr setattr unlink)))
+(allow nativos_linux_client nativos_runtime_file (dir (search read write open getattr setattr add_name remove_name create watch rmdir rename reparent)))
+(allow nativos_linux_client nativos_runtime_file (file (create read write append open getattr setattr unlink rename map lock ioctl)))
+(allowx nativos_linux_client nativos_runtime_file (ioctl file (0x5401 0x5451)))
+(allow nativos_linux_client nativos_runtime_file (lnk_file (create read getattr unlink rename)))
+(allow nativos_linux_client nativos_runtime_file (sock_file (create read write open getattr setattr unlink)))
+(allow nativos_linux_client nativos_runtime_file (chr_file (create read write open getattr setattr ioctl)))
+(allow nativos_session nativos_app (unix_stream_socket (connectto)))
+(allow nativosd tmpfs (filesystem (mount unmount getattr relabelfrom)))
+(allow nativosd proc (filesystem (mount unmount getattr)))
+(allow nativosd devpts (filesystem (mount unmount getattr)))
+(allow nativosd labeledfs (filesystem (remount)))
+(allow nativosd proc (dir (search read open getattr)))
+(allow nativosd proc (lnk_file (read getattr)))
+(allow nativosd nativosd (dir (search read open getattr)))
+(allow nativosd nativosd (lnk_file (read getattr)))
+(allow nativos_runtime_file tmpfs (filesystem (associate)))
+(allow nativosd nativos_runtime_file (filesystem (mount unmount remount getattr relabelfrom relabelto)))
+(allow nativos_session tmpfs (filesystem (mount unmount getattr relabelfrom)))
+; Files created on session tmpfs (including framebuffer backing files) use
+; the dedicated shared runtime type, allowing the APK to map transferred fds.
+(typetransition nativos_session tmpfs file nativos_runtime_file)
+(allow nativos_app nativos_session (fd (use)))
+(allow nativos_linux_client tmpfs (dir (create search read write open getattr setattr add_name remove_name watch rmdir rename reparent)))
+(allow nativos_session tmpfs (dir (mounton)))
+(allow nativos_linux_client tmpfs (file (create read write open getattr setattr unlink rename map lock ioctl)))
+(allow nativos_session tmpfs (file (mounton)))
+(allowx nativos_linux_client tmpfs (ioctl file (0x5401 0x5451)))
+(allow nativos_linux_client tmpfs (lnk_file (create read getattr unlink rename)))
+(allow nativos_linux_client tmpfs (sock_file (create read write open getattr setattr unlink)))
+(allow nativos_linux_client tmpfs (chr_file (create read write open getattr setattr ioctl)))
+(allow nativos_session proc (filesystem (mount unmount getattr)))
+(allow nativos_session devpts (filesystem (mount unmount getattr)))
+(allow nativos_session labeledfs (filesystem (remount)))
+(allow nativos_session rootfs (dir (mounton)))
+(allow nativos_session system_file (dir (mounton)))
+(allow nativos_session system_file (file (mounton)))
+(allow nativos_session nativos_runtime_file (dir (mounton)))
+(allow nativos_session nativos_runtime_file (filesystem (mount unmount remount getattr relabelfrom relabelto)))
+(allow nativos_linux_client proc (dir (search read open getattr)))
+(allow nativos_linux_client proc (file (read open getattr)))
+(allow nativos_linux_client proc (lnk_file (read getattr)))
+(allow nativos_linux_client self (dir (search read open getattr)))
+(allow nativos_linux_client self (file (read open getattr ioctl)))
+(allowx nativos_linux_client self (ioctl file (0x5401 0x5451)))
+(allow nativos_linux_client devpts (chr_file (read write open getattr ioctl)))
+; VTE needs packet mode plus the PTY allocation/unlock/peer operations;
+; Android's inherited tty list covers termios/job-control but not allocation.
+; Do not allow a full tty range, TIOCSTI, console redirection or serial control.
+(allowx nativos_linux_client devpts (ioctl chr_file (0x5420 0x5430 0x5431 0x5441)))
+; libgtop needs read-only CPU statistics, and GIO reads session mount metadata.
+(allow nativos_linux_client proc_stat (file (read open getattr)))
+(allow nativos_linux_client proc_mounts (file (read open getattr)))
+(allow nativos_app self (process (ptrace)))

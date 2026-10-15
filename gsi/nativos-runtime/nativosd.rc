@@ -1,0 +1,14 @@
+# Requires dedicated nativosd_exec/nativosd policy and socket labels.
+# Service deliberately non-critical: runtime failure must not reboot Android.
+service nativosd /system/bin/nativosd
+    class late_start
+    user root
+    group root
+    disabled
+    socket nativos_runtime stream 0666 root root
+    restart_period 10
+
+on post-fs-data
+    mkdir /data/misc/nativos 0711 root root
+    restorecon /data/misc/nativos
+    start nativosd

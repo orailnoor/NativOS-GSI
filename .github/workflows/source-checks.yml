@@ -1,0 +1,24 @@
+name: Source checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  source-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Package source and transaction guards
+        run: |
+          python3 gsi/packages/tests.py
+          python3 gsi/packages/test-transaction-locks.py
+      - name: Client policy and public configuration guards
+        run: |
+          python3 gsi/nativos-runtime/tests/client_policy_test.py
+          bash gsi/nativos-runtime/tests/public-config-test.sh
+      - name: Shell syntax
+        run: find gsi scripts -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n

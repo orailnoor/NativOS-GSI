@@ -1,0 +1,5 @@
+/system/bin/nativosd u:object_r:nativosd_exec:s0
+/system/bin/nativos-session-runner u:object_r:nativosd_exec:s0
+/dev/socket/nativos_runtime u:object_r:nativos_socket:s0
+/data/misc/nativos(/.*)? u:object_r:nativos_runtime_file:s0
+/system/etc/nativos/linux/usr/lib/firefox/firefox(-bin)? u:object_r:nativos_browser_exec:s0

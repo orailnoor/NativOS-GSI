@@ -1,0 +1,2 @@
+user=_app isPrivApp=true seinfo=nativos name=com.nativOS domain=nativos_app type=privapp_data_file levelFrom=all
+user=_app isPrivApp=true seinfo=nativos name=com.nativOS:* domain=nativos_app type=privapp_data_file levelFrom=all
